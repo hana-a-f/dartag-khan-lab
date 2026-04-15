@@ -1,0 +1,32 @@
+#set environment
+export PYTHONPATH=/programs/cutadapt-4.1/lib/python3.9/site-packages:/programs/cutadapt-4.1/lib64/python3.9/site-packages
+export PATH=/programs/cutadapt-4.1/bin:/programs/muscle:/programs/bbmap-39.01:$PATH
+
+#remove white space
+
+awk -F'\t' '{
+  gsub(/ /, "", $1);
+  gsub(/ /, "", $2);
+  gsub(/ /, "", $3);
+  print
+}' OFS='\t' samples_hana.tsv > samples_hana_clean.tsv
+
+dos2unix samples_hana_clean.tsv
+
+#check fastq in the directory and non missing
+awk '{print $3}' samples_hana_clean.tsv | while read f; do
+  [ -f "$f" ] || echo "Missing: $f"
+done
+
+#check duplicates
+
+cut -f2 samples_hana_clean.tsv | sort | uniq -d
+
+#this one kept having a duplicate i removed:
+
+grep -v "4019374.FASTQ.gz" samples_hana_clean.tsv > samples_hana_final.tsv
+
+
+cut -f2 samples_hana_final.tsv | sort | uniq -d
+
+amplicon.py -v 20m -j 12 -s samples_hana_final.tsv -k apple_primer1 -o results -c 2 -n 20 -a 0.01 -m 50 -l 30 -d 0 -z 0.1 -r 10 --mode 3 --ori 2 2>&1 | tee amplicon.log
