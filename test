@@ -30,3 +30,214 @@ grep -v "4019374.FASTQ.gz" samples_hana_clean.tsv > samples_hana_final.tsv
 cut -f2 samples_hana_final.tsv | sort | uniq -d
 
 amplicon.py -v 20m -j 12 -s samples_hana_final.tsv -k apple_primer1 -o results -c 2 -n 20 -a 0.01 -m 50 -l 30 -d 0 -z 0.1 -r 10 --mode 3 --ori 2 2>&1 | tee amplicon.log
+
+
+
+###filter
+bcftools view -q 0.01:minor -i 'F_MISSING<0.3' -o filtered.vcf -O z unfiltered.vcf
+
+#get sample list with missing data
+bcftools query -f '[%SAMPLE\t%GT\n]' filtered.vcf | \
+awk '{count[$1]++; if($2 == "./.") missing[$1]++} END {for (sample in count) print sample, missing[sample]/count[sample]}' > sample_missing_data.txt
+
+#filter
+awk '$2 > 0.5 {print $1}' sample_missing_data.txt > samples_to_remove.txt
+
+#filter these samples
+bcftools view --samples-file ^samples_to_remove.txt -Oz -o sample_filtered.vcf filtered.vcf
+
+bcftools +fill-tags -O z -o final.vcf  filtered.vcf
+
+bcftools query -f '%CHROM\t%POS\t%AF\t%NS\n'  final.vcf > maf_ns.stat.txt
+
+
+#############make PCA to check the populations and sample names!#######
+
+#HC vcf
+
+dos2unix hc_gala_slice.txt
+
+#slice
+
+amplicon/slice.py -i amplicon_output_043026 -o HC_GALA -s hc_gala_slice.txt -a 0
+
+#name change
+tr -d '\r' < name.hc.txt > name.hc.clean.txt
+
+tr -d '\r' < name.hc.clean.txt | \
+sed 's/[[:space:]]*$//' | \
+awk -F'\t' 'NF==2 {print $1, $2}' OFS='\t' > name.hc.clean.fixed.txt
+
+amplicon/changeName.py -i  HC_GALA/hap_genotype -o  HC_GALA/hap_genotype_names -n name.hc.clean.fixed.txt
+
+
+
+
+
+
+#call snps
+../amplicon/hap2realVCF/hap2reads.py hap_genotype_names HaplotypeAllele.fasta readOutputDir
+../amplicon/hap2realVCF/hap2vcf.sh readOutputDir /workdir/hf332/results/GDDH13/GDDH13_1-1_formatted.fasta 10
+
+bcftools view -q 0.01:minor -i 'F_MISSING<0.3' -o filtered.vcf -O z unfiltered.vcf
+
+#get sample list with missing data
+bcftools query -f '[%SAMPLE\t%GT\n]' filtered.vcf | \
+awk '{count[$1]++; if($2 == "./.") missing[$1]++} END {for (sample in count) print sample, missing[sample]/count[sample]}' > sample_missing_data.txt
+
+#filter
+awk '$2 > 0.5 {print $1}' sample_missing_data.txt > samples_to_remove.txt
+
+#filter these samples
+bcftools view --samples-file ^samples_to_remove.txt -Oz -o sample_filtered.vcf filtered.vcf
+
+bcftools +fill-tags -O z -o final.vcf  filtered.vcf
+
+bcftools query -f '%CHROM\t%POS\t%AF\t%NS\n'  final.vcf > maf_ns.stat.txt
+
+#make hapotype file:
+-f: mininum allele frequency
+-m: maternal parent index, if there are several separated by comma. First sample index is 1.
+-p: paternal parent index, if there are several separated by comma. First sample is 1.
+-j: maternal parent name, if not set, use the first marternal individual name.
+-k: paternal parent name, if not set, use the first paternal individual name.
+
+../amplicon/to_lep_map.pl -g hap_genotype_names -f 0.001 -m 2 -p 1 -j 'Honeycrisp_m' -k 'Gala_f' -marker2pos -n HC_Gala_haplotype
+
+
+##lepmap3
+
+java -cp /programs/Lep-MAP3/bin/ ParentCall2 data = HC_Gala_haplotype.lepmap3.pedigree.txt vcfFile = HC_Gala_haplo_filtered_imputed.vcf > post.call
+
+#Number of called markers = 1814 (1670 informative)
+
+java -cp /programs/Lep-MAP3/bin/ Filtering2 data = post.call removeNonInformative=1 dataTolerance=0.0001 > filtpost.call
+java -cp /programs/Lep-MAP3/bin/ OrderMarkers2 data=filtpost.call sexAveraged=1 map=map.txt > order.txt
+
+awk -vfullData=1 -f map2genotypes.awk order.txt > genotypes.txt
+awk '(NR>=7)' filtpost.call|cut -f 1,2 > snpnames.txt
+paste snpnames.txt map.txt > snplgs.txt
+
+#####marker to pos####
+
+grep "^>" primer.fa | sed 's/^>//' | awk -F'_' 'BEGIN{OFS="\t"} {print $0, $(NF-1), $NF}' > marker2pos
+
+
+##DEMIR###
+
+#Demir vcf
+
+dos2unix demir_gala_slice.txt 
+
+#slice
+
+amplicon/slice.py -i amplicon_output_043026 -o Demir_GALA -s demir_gala_slice.txt -a 0
+
+#name change
+tr -d '\r' < name.demir.txt > name.demir.clean.txt
+
+tr -d '\r' < name.demir.clean.fixed.txt  | \
+sed 's/[[:space:]]*$//' | \
+awk -F'\t' 'NF==2 {print $1, $2}' OFS='\t' > name.demir.clean.fixed.2.txt 
+
+amplicon/changeName.py -i  Demir_GALA/hap_genotype -o  Demir_GALA/hap_genotype_names -n name.demir.clean.fixed.2.txt
+
+#haplotype
+gala = maternal
+
+../amplicon/to_lep_map.pl -g hap_genotype_names -f 0.001 -m 2 -p 1 -j 'Gala' -k 'Demir' -marker2pos -n Demir_Gala_haplotype
+
+java -cp /programs/Lep-MAP3/bin/ ParentCall2 data = Demir_Gala_haplotype.lepmap3.pedigree.txt vcfFile = Demir_Gala_haplotype_filtered_imputed.vcf > post.call
+
+#Number of called markers = 2347 (1676 informative)
+
+java -cp /programs/Lep-MAP3/bin/ Filtering2 data = post.call removeNonInformative=1 dataTolerance=0.0001 > filtpost.call
+
+java -cp /programs/Lep-MAP3/bin/ SeparateChromosomes2 data=filtpost.call lodLimit=5 sizeLimit=5 > map.txt
+sort map.txt|uniq -c|sort -n
+
+##NEED TO FINISH HERE
+
+
+
+
+##snp
+#call snps
+../amplicon/hap2realVCF/hap2reads.py hap_genotype_names HaplotypeAllele.fasta readOutputDir
+../amplicon/hap2realVCF/hap2vcf.sh readOutputDir /workdir/hf332/results/GDDH13/GDDH13_1-1_formatted.fasta 10
+
+bcftools view -q 0.01:minor -i 'F_MISSING<0.3' -o filtered.vcf -O z unfiltered.vcf
+
+#get sample list with missing data
+bcftools query -f '[%SAMPLE\t%GT\n]' filtered.vcf | \
+awk '{count[$1]++; if($2 == "./.") missing[$1]++} END {for (sample in count) print sample, missing[sample]/count[sample]}' > sample_missing_data.txt
+
+#filter
+awk '$2 > 0.5 {print $1}' sample_missing_data.txt > samples_to_remove.txt
+
+#filter these samples
+bcftools view --samples-file ^samples_to_remove.txt -Oz -o sample_filtered.vcf filtered.vcf
+
+bcftools +fill-tags -O z -o final.vcf  filtered.vcf
+
+bcftools query -f '%CHROM\t%POS\t%AF\t%NS\n'  final.vcf > maf_ns.stat.txt
+
+
+
+###Chisel Jersey###
+
+
+dos2unix cj_gala_slice.txt 
+
+#slice
+
+amplicon/slice.py -i amplicon_output_043026 -o ChiselJersey_GALA -s cj_gala_slice.txt -a 0
+
+#name change
+tr -d '\r' < name.cj.txt > name.cj.clean.txt
+
+tr -d '\r' < name.cj.clean.txt  | \
+sed 's/[[:space:]]*$//' | \
+awk -F'\t' 'NF==2 {print $1, $2}' OFS='\t' > name.cj.clean.fixed.txt 
+
+cat -A name.cj.clean.fixed.txt  | head
+dos2unix name.cj.clean.fixed.txt
+
+amplicon/changeName.py -i ChiselJersey_GALA/hap_genotype -o ChiselJersey_GALA/hap_genotype_names -n name.cj.clean.final.txt
+
+cat -A hap_genotype_names | head -n2
+../amplicon/to_lep_map.pl -g hap_genotype_names -f 0.001 -m 1 -p 2 -j 'Gala' -k 'ChiselJersey' -l marker2pos -n ChiselJersey_Gala_haplotype
+
+
+
+#call snps
+../amplicon/hap2realVCF/hap2reads.py hap_genotype_names HaplotypeAllele.fasta readOutputDir
+../amplicon/hap2realVCF/hap2vcf.sh readOutputDir /workdir/hf332/results/GDDH13/GDDH13_1-1_formatted.fasta 10
+
+bcftools view -q 0.01:minor -i 'F_MISSING<0.3' -o filtered.vcf -O z unfiltered.vcf
+
+#get sample list with missing data
+bcftools query -f '[%SAMPLE\t%GT\n]' filtered.vcf | \
+awk '{count[$1]++; if($2 == "./.") missing[$1]++} END {for (sample in count) print sample, missing[sample]/count[sample]}' > sample_missing_data.txt
+
+#filter
+awk '$2 > 0.5 {print $1}' sample_missing_data.txt > samples_to_remove.txt
+
+#filter these samples
+bcftools view --samples-file ^samples_to_remove.txt -Oz -o sample_filtered.vcf filtered.vcf
+
+bcftools +fill-tags -O z -o final.vcf  filtered.vcf
+
+bcftools query -f '%CHROM\t%POS\t%AF\t%NS\n'  final.vcf > maf_ns.stat.txt
+
+
+##run lepmap 3
+
+
+
+
+
+
+
+
+
