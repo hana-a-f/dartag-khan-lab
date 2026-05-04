@@ -102,12 +102,19 @@ bcftools query -f '%CHROM\t%POS\t%AF\t%NS\n'  final.vcf > maf_ns.stat.txt
 -j: maternal parent name, if not set, use the first marternal individual name.
 -k: paternal parent name, if not set, use the first paternal individual name.
 
-../amplicon/to_lep_map.pl -g hap_genotype_names -f 0.001 -m 2 -p 1 -j 'Honeycrisp_m' -k 'Gala_f' -marker2pos -n HC_Gala_haplotype
+
+#check the order of the imputed file:
+
+bcftools query -l HC_Gala_haplo_filtered_imputed.vcf > current_order.txt
+bcftools reheader -s current_order.txt HC_Gala_haplo_filtered_imputed.vcf > HC_Gala_haplo_filtered_imputed.f.vcf
+
+
+../amplicon/to_lep_map.pl -g hap_genotype_names -f 0.001 -p 1 -m 2 -j 'Honeycrisp_m' -k 'Gala_f' -marker2pos -n HC_Gala_haplotype
 
 
 ##lepmap3
 
-java -cp /programs/Lep-MAP3/bin/ ParentCall2 data = HC_Gala_haplotype.lepmap3.pedigree.txt vcfFile = HC_Gala_haplo_filtered_imputed.vcf > post.call
+java -cp /programs/Lep-MAP3/bin/ ParentCall2 data = HC_Gala_haplotype.lepmap3.pedigree.txt vcfFile = HC_Gala_haplo_filtered_imputed.f.vcf > post.call
 
 #Number of called markers = 1814 (1670 informative)
 
