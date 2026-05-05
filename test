@@ -1,3 +1,4 @@
+
 #set environment
 export PYTHONPATH=/programs/cutadapt-4.1/lib/python3.9/site-packages:/programs/cutadapt-4.1/lib64/python3.9/site-packages
 export PATH=/programs/cutadapt-4.1/bin:/programs/muscle:/programs/bbmap-39.01:$PATH
@@ -59,7 +60,8 @@ dos2unix hc_gala_slice.txt
 
 #slice
 
-amplicon/slice.py -i amplicon_output_043026 -o HC_GALA -s hc_gala_slice.txt -a 0
+amplicon/slice.py -i amplicon_output_043026 -o HC_GALA_NEW -s hc_gala_slice.txt -a 0
+
 
 #name change
 tr -d '\r' < name.hc.txt > name.hc.clean.txt
@@ -68,10 +70,7 @@ tr -d '\r' < name.hc.clean.txt | \
 sed 's/[[:space:]]*$//' | \
 awk -F'\t' 'NF==2 {print $1, $2}' OFS='\t' > name.hc.clean.fixed.txt
 
-amplicon/changeName.py -i  HC_GALA/hap_genotype -o  HC_GALA/hap_genotype_names -n name.hc.clean.fixed.txt
-
-
-
+amplicon/changeName.py -i HC_GALA_NEW/hap_genotype -o HC_GALA_NEW/hap_genotype_names -n name.hc.clean.txt
 
 
 
@@ -103,31 +102,73 @@ bcftools query -f '%CHROM\t%POS\t%AF\t%NS\n'  final.vcf > maf_ns.stat.txt
 -k: paternal parent name, if not set, use the first paternal individual name.
 
 
-#check the order of the imputed file:
-
-bcftools query -l HC_Gala_haplo_filtered_imputed.vcf > current_order.txt
-bcftools reheader -s current_order.txt HC_Gala_haplo_filtered_imputed.vcf > HC_Gala_haplo_filtered_imputed.f.vcf
-
 
 ../amplicon/to_lep_map.pl -g hap_genotype_names -f 0.001 -p 1 -m 2 -j 'Honeycrisp_m' -k 'Gala_f' -marker2pos -n HC_Gala_haplotype
 
 
 ##lepmap3
 
-java -cp /programs/Lep-MAP3/bin/ ParentCall2 data = HC_Gala_haplotype.lepmap3.pedigree.txt vcfFile = HC_Gala_haplo_filtered_imputed.f.vcf > post.call
+java -cp /programs/Lep-MAP3/bin/ ParentCall2 data = HC_Gala_haplotype.lepmap3.pedigree.txt vcfFile = HC_Gala_haplo_filtered_imputed.vcf > post.call
+
 
 #Number of called markers = 1814 (1670 informative)
 
 java -cp /programs/Lep-MAP3/bin/ Filtering2 data = post.call removeNonInformative=1 dataTolerance=0.0001 > filtpost.call
+
+
+### 3. SeparateChromosomes2 ###
+java -cp /programs/Lep-MAP3/bin/ SeparateChromosomes2 data=filtpost.call lodLimit=5 sizeLimit=5 > map.txt
+
+java -cp /programs/Lep-MAP3/bin/ OrderMarkers2 data=filtpost.call sexAveraged=1 map=map.txt > order.txt
+
+
+
+
+awk -vfullData=1 -f map2genotypes.awk order.txt > genotypes.txt
+awk '(NR>=7)' filtpost.call|cut -f 1,2 > snpnames.txt
+paste snpnames.txt map.txt > snplgs.txt
+
+
+#####marker to pos####
+
+grep "^>" primer.fa | sed 's/^>//' | awk -F'_' 'BEGIN{OFS="\t"} {print $0, $(NF-1), $NF}' > marker2pos
+
+
+
+##redo to check:
+
+./amplicon/slice.py -i amplicon_output_043026 -o HC_GALA_check -s hc_gala_slice.txt -a 0
+/amplicon/changeName.py -i /workdir/hf332/results/HC_GALA_check/hap_genotype -o /workdir/hf332/results/HC_GALA_check/hap_genotype_names -n name.change.txt
+
+
+../amplicon/to_lep_map.pl -g hap_genotype_names -f 0.05 -n hc.gala -l marker2pos -m 3,4 -p 1,2
+
+java -cp /programs/Lep-MAP3/bin/ ParentCall2 data =  hc.gala.lepmap3.pedigree.txt vcfFile = hc.gala.vcf > post.call
+java -cp /programs/Lep-MAP3/bin/ Filtering2 data = post.call removeNonInformative=1 dataTolerance=0.0001 > filtpost.call
+java -cp /programs/Lep-MAP3/bin/ SeparateChromosomes2 data=filtpost.call lodLimit=10 sizeLimit=5 > map.txt
 java -cp /programs/Lep-MAP3/bin/ OrderMarkers2 data=filtpost.call sexAveraged=1 map=map.txt > order.txt
 
 awk -vfullData=1 -f map2genotypes.awk order.txt > genotypes.txt
 awk '(NR>=7)' filtpost.call|cut -f 1,2 > snpnames.txt
 paste snpnames.txt map.txt > snplgs.txt
 
-#####marker to pos####
 
-grep "^>" primer.fa | sed 's/^>//' | awk -F'_' 'BEGIN{OFS="\t"} {print $0, $(NF-1), $NF}' > marker2pos
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ##DEMIR###
