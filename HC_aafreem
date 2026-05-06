@@ -1,0 +1,26 @@
+##AFREEN###
+head -n 1 hap_genotype | tr '\t' '\n' > samples.txt
+
+
+../amplicon/to_lep_map.pl -g hap_genotype -f 0.05 -n hc.full -l marker2pos
+
+#CHECK AND SUBSET IN R
+
+../amplicon/to_lep_map.pl -g hap_genotype_subset -f 0.05 -n hc.gala -l marker2pos -p 1 -m 2 -j 'HC_002' -k 'Gala_001_R1' -n HC_Gala_haplotype
+
+#filter in tassel
+
+java -cp /programs/Lep-MAP3/bin/ ParentCall2 data = HC_Gala_haplotype.lepmap3.pedigree.txt vcfFile = hc.gala.imputed.vcf > post.call
+Number of called markers = 1835 (1664 informative)
+
+java -cp /programs/Lep-MAP3/bin/ Filtering2 data = post.call removeNonInformative=1 dataTolerance=0.0001 > filtpost.call
+
+java -cp /programs/Lep-MAP3/bin/ SeparateChromosomes2 data=filtpost.call lodLimit=5 sizeLimit=5 > map.txt
+sort map.txt|uniq -c|sort -n
+java -cp /programs/Lep-MAP3/bin/ OrderMarkers2 data=filtpost.call sexAveraged=1 map=map.txt > order.txt
+
+
+
+awk -vfullData=1 -f map2genotypes.awk order.txt > genotypes.txt
+awk '(NR>=7)' filtpost.call|cut -f 1,2 > snpnames.txt
+paste snpnames.txt map.txt > snplgs.txt
