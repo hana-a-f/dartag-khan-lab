@@ -134,19 +134,49 @@ paste snpnames.txt map.txt > snplgs.txt
 grep "^>" primer.fa | sed 's/^>//' | awk -F'_' 'BEGIN{OFS="\t"} {print $0, $(NF-1), $NF}' > marker2pos
 
 
-
 ##redo to check:
 
-./amplicon/slice.py -i amplicon_output_043026 -o HC_GALA_check -s hc_gala_slice.txt -a 0
-/amplicon/changeName.py -i /workdir/hf332/results/HC_GALA_check/hap_genotype -o /workdir/hf332/results/HC_GALA_check/hap_genotype_names -n name.change.txt
+#extract all samples from hap_genotype file, and save the output into "sampleList.txt"
+head -n1 hap_genotype | sed  's/\t/\n/g'| tail -n +3 | sed "s/__/\t/" > sampleList.txt
+
+#print the content of "sampleList.txt"
+cat sampleList.txt
+
+#slice by sample name
+./amplicon/slice.py -i amplicon_output_043026 -o HC_GALA_check -s hc.slice.family.txt -a 0
+
+#rename 
+./amplicon/changeName.py -i /workdir/hf332/results/HC_GALA_check/hap_genotype -o /workdir/hf332/results/HC_GALA_check/hap_genotype_names -n name.change.txt
 
 
-../amplicon/to_lep_map.pl -g hap_genotype_names -f 0.05 -n hc.gala -l marker2pos -m 3,4 -p 1,2
 
-java -cp /programs/Lep-MAP3/bin/ ParentCall2 data =  hc.gala.lepmap3.pedigree.txt vcfFile = hc.gala.vcf > post.call
+
+
+
+
+
+##AFREEN###
+head -n 1 hap_genotype | tr '\t' '\n' > samples.txt
+
+
+../amplicon/to_lep_map.pl -g hap_genotype -f 0.05 -n hc.full -l marker2pos
+
+#CHECK AND SUBSET IN R
+
+../amplicon/to_lep_map.pl -g hap_genotype_subset -f 0.05 -n hc.gala -l marker2pos -p 1 -m 2 -j 'HC_002' -k 'Gala_001_R1' -n HC_Gala_haplotype
+
+#filter in tassel
+
+java -cp /programs/Lep-MAP3/bin/ ParentCall2 data = HC_Gala_haplotype.lepmap3.pedigree.txt vcfFile = hc.gala.imputed.vcf > post.call
+Number of called markers = 1835 (1664 informative)
+
 java -cp /programs/Lep-MAP3/bin/ Filtering2 data = post.call removeNonInformative=1 dataTolerance=0.0001 > filtpost.call
-java -cp /programs/Lep-MAP3/bin/ SeparateChromosomes2 data=filtpost.call lodLimit=10 sizeLimit=5 > map.txt
+
+java -cp /programs/Lep-MAP3/bin/ SeparateChromosomes2 data=filtpost.call lodLimit=5 sizeLimit=5 > map.txt
+sort map.txt|uniq -c|sort -n
 java -cp /programs/Lep-MAP3/bin/ OrderMarkers2 data=filtpost.call sexAveraged=1 map=map.txt > order.txt
+
+
 
 awk -vfullData=1 -f map2genotypes.awk order.txt > genotypes.txt
 awk '(NR>=7)' filtpost.call|cut -f 1,2 > snpnames.txt
@@ -154,7 +184,11 @@ paste snpnames.txt map.txt > snplgs.txt
 
 
 
-
+bcftools view \
+  -s HC_002,Gala_001_R1 \
+  -Oz \
+  -o parents.vcf.gz \
+  HC_Gala_haplotype.vcf
 
 
 
