@@ -291,6 +291,52 @@ cat -A hap_genotype_names | head -n2
 ../amplicon/to_lep_map.pl -g hap_genotype_names -f 0.001 -m 1 -p 2 -j 'Gala' -k 'ChiselJersey' -l marker2pos -n ChiselJersey_Gala_haplotype
 
 
+##make a haplotype file for mds
+
+./amplicon/to_lep_map.pl -g hap_genotype -f 0.001 -n cj_gala_non_phased_haplotypes -l marker2pos
+./amplicon/to_lep_map.pl -g hap_genotype -f 0.001 -n demir_gala_non_phased_haplotypes -l marker2pos
+
+
+#done, now rename and order so maternal is number 1 and paternal is number two and keep the individuals with the least missing data, did this in R
+
+./amplicon/to_lep_map.pl -g hap_genotype_filt -f 0.001 -m 2 -p 1 -j 'gala_002' -k 'demir_001' -l marker2pos -n Demir_Gala_haplotype
+
+##mfilter in tassel
+##run lep map 3
+
+java -cp /programs/Lep-MAP3/bin/ ParentCall2 data = Demir_Gala_haplotype.lepmap3.pedigree.txt vcfFile = Demir_Gala_imputed_phased_af.vcf > post.call
+java -cp /programs/Lep-MAP3/bin/ Filtering2 data = post.call removeNonInformative=1 dataTolerance=0.0001 > filtpost.call
+java -cp /programs/Lep-MAP3/bin/ SeparateChromosomes2 data=filtpost.call lodLimit=5 sizeLimit=5 > map.txt
+java -cp /programs/Lep-MAP3/bin/ OrderMarkers2 data=filtpost.call sexAveraged=1 map=map.txt > order.txt
+
+### Convert order.txt to genotype.txt ### 
+# The genotype.txt is more human readible and is closer
+# to the format we need for R/qtl
+awk -vfullData=1 -f map2genotypes.awk order.txt > genotypes.txt
+
+### Get Marker Names and Linkage Groups 
+# Lep-MAP3 assigns a number to each marker at the beginning
+# of the pipeline and that number is what is shown in the 
+# genotypes.txt file. We need to extract that order so we can 
+# reintroduce the marker names. 
+
+awk '(NR>=7)' filtpost.call|cut -f 1,2 > snpnames.txt
+paste snpnames.txt map.txt > snplgs.txt
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #call snps
 ../amplicon/hap2realVCF/hap2reads.py hap_genotype_names HaplotypeAllele.fasta readOutputDir
